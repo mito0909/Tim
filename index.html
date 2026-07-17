@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<title>ラクガキ時間 - イラスト作業記録</title>
+
+<!-- iOS PWA (ホーム画面追加) 設定 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ラクガキ時間">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#EDE7D6">
+<link id="apple-touch-icon" rel="apple-touch-icon">
+<link id="favicon-link" rel="icon">
+
+<style>
+  :root{
+    /* --- 紙とインクのトークン --- */
+    --paper:      #EDE7D6;   /* 生成りの紙 */
+    --paper-dim:  #E2DBC7;   /* 影の紙 */
+    --card:       #F6F2E6;   /* カードの薄紙 */
+    --ink:        #2E2B24;   /* 黒インク */
+    --ink-soft:   #6B6454;   /* 鉛筆の下書き線 */
+    --line:       #D8CEB4;   /* 罫線 */
+    --marker:     #157A73;   /* コピック系ティール（記録・進行） */
+    --marker-dark:#0F5D57;
+    --coral:      #D65F45;   /* 計測中・停止アクセント */
+    --coral-dark: #B84B34;
+    --gold:       #B8863A;   /* 補助アクセント（達成・強調） */
+    --radius: 18px;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  *{ box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+  html,body{ height:100%; }
+  body{
+    margin:0;
+    background: var(--paper);
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(46,43,36,0.05) 1px, transparent 0);
+    background-size: 16px 16px;
+    color: var(--ink);
+    font-family: -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif;
+    overscroll-behavior-y: none;
+    -webkit-user-select:none; user-select:none;
+  }
+  .mono{ font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+  #app{
+    max-width: 560px;
+    margin: 0 auto;
+    min-height: 100vh;
+    padding-top: calc(var(--safe-top) + 14px);
+    padding-bottom: calc(var(--safe-bottom) + 84px);
+  }
+
+  header.top{
+    padding: 0 18px 10px;
+    display:flex; align-items:baseline; justify-content:space-between;
+  }
+  header.top h1{
+    font-size: 19px; font-weight: 800; letter-spacing: .02em; margin:0;
+  }
+  header.top .date{
+    font-size: 12px; color: var(--ink-soft);
+  }
+
+  .screen{ display:none; padding: 4px 16px 24px; animation: fade .18s ease; }
+  .screen.active{ display:block; }
+  @keyframes fade{ from{opacity:.4; transform:translateY(4px);} to{opacity:1; transform:none;} }
+
+  /* ---------- タイマー画面 ---------- */
+  .selector-row{ display:flex; gap:8px; margin-bottom: 14px; }
+  .selector-row select{
+    flex:1; appearance:none; -webkit-appearance:none;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; padding: 11px 12px; font-size: 14px; color: var(--ink);
+    font-weight:600;
+  }
+  .chips{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom: 22px; }
+  .chip{
+    padding: 7px 14px; border-radius: 999px; border:1px solid var(--line);
+    background: var(--card); font-size: 13px; font-weight:600; color: var(--ink-soft);
+  }
+  .chip.selected{ background: var(--marker); border-color: var(--marker); color:#fff; }
+
+  .dial-wrap{ display:flex; justify-content:center; margin: 10px 0 22px; }
+  .dial{ position:relative; width: 250px; height:250px; }
+  .dial svg{ width:100%; height:100%; transform: rotate(-90deg); }
+  .dial-track{ fill:none; stroke: var(--line); stroke-width: 3; }
+  .dial-prog{ fill:none; stroke: var(--marker); stroke-width: 3; stroke-linecap: round;
+    transition: stroke-dashoffset .3s linear; }
+  .dial.running .dial-prog{ stroke: var(--coral); }
+  .dial-center{
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center;
+  }
+  .dial-time{ font-size: 40px; font-weight: 700; letter-spacing: .01em; }
+  .dial-label{ font-size: 12px; color: var(--ink-soft); margin-top:4px; max-width:170px; }
+
+  .go-btn{
+    display:block; width: 100%; max-width: 320px; margin: 0 auto;
+    padding: 17px; border:none; border-radius: 999px; font-size:17px; font-weight:800;
+    background: var(--marker); color:#fff; letter-spacing:.04em;
+    box-shadow: 0 6px 0 var(--marker-dark);
+  }
+  .go-btn:active{ transform: translateY(4px); box-shadow: 0 2px 0 var(--marker-dark); }
+  .go-btn.stop{ background: var(--coral); box-shadow: 0 6px 0 var(--coral-dark); }
+  .go-btn.stop:active{ box-shadow: 0 2px 0 var(--coral-dark); }
+
+  .section-title{
+    font-size:13px; font-weight:800; color: var(--ink-soft);
+    margin: 26px 0 10px; display:flex; align-items:center; gap:8px;
+  }
+  .section-title::after{ content:""; flex:1; height:1px; background: var(--line); }
+
+  .sess-item{
+    display:flex; align-items:center; gap:10px; padding: 10px 4px;
+    border-bottom: 1px solid var(--line);
+  }
+  .sess-item:last-child{ border-bottom:none; }
+  .dot{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+  .sess-main{ flex:1; min-width:0; }
+  .sess-title{ font-size:14px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sess-sub{ font-size:12px; color: var(--ink-soft); }
+  .sess-dur{ font-size:14px; font-weight:700; font-family: ui-monospace, monospace; }
+  .sess-del{ font-size:18px; color: var(--ink-soft); padding: 4px 6px; }
+
+  .empty{ text-align:center; padding: 30px 10px; color: var(--ink-soft); font-size:13px; }
+
+  /* ---------- カード / 一覧 ---------- */
+  .day-card, .work-card{
+    background: var(--card); border:1px solid var(--line); border-radius: var(--radius);
+    padding: 14px 14px 6px; margin-bottom: 14px;
+  }
+  .day-card .day-head, .work-card .work-head{
+    display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;
+  }
+  .day-head .day-name{ font-weight:800; font-size:15px; }
+  .day-head .day-total{ font-weight:800; font-size:14px; color: var(--marker-dark); }
+
+  .work-head{ cursor:pointer; }
+  .work-title-wrap{ display:flex; align-items:center; gap:8px; min-width:0; }
+  .work-title{ font-weight:800; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .work-total{ font-weight:800; font-size:14px; color: var(--marker-dark); flex-shrink:0; }
+
+  .bar{ height:8px; border-radius:5px; overflow:hidden; display:flex; margin: 8px 0 8px; background: var(--line); }
+  .bar span{ height:100%; }
+  .legend{ display:flex; flex-wrap:wrap; gap:8px 14px; font-size:11px; color: var(--ink-soft); margin-bottom:6px; }
+  .legend i{ display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:4px; vertical-align:middle; }
+
+  .work-detail{ display:none; margin-top: 6px; border-top: 1px dashed var(--line); padding-top: 6px; }
+  .work-detail.open{ display:block; }
+
+  /* ---------- 管理画面 ---------- */
+  .manage-list{ background: var(--card); border:1px solid var(--line); border-radius: var(--radius); overflow:hidden; margin-bottom:18px; }
+  .manage-row{ display:flex; align-items:center; justify-content:space-between; padding: 12px 14px; border-bottom:1px solid var(--line); }
+  .manage-row:last-child{ border-bottom:none; }
+  .manage-row .name{ font-weight:700; font-size:14px; display:flex; align-items:center; gap:8px;}
+  .manage-row .actions{ display:flex; gap:14px; font-size:13px; }
+  .manage-row .actions span{ color: var(--ink-soft); font-weight:700; }
+  .manage-row .actions span.del{ color: var(--coral-dark); }
+
+  .add-btn{
+    width:100%; padding:12px; border-radius:12px; border:1.5px dashed var(--ink-soft);
+    background:transparent; color: var(--ink-soft); font-weight:700; font-size:14px; margin-bottom:22px;
+  }
+
+  .util-btn{
+    width:100%; padding:13px; border-radius:12px; border:1px solid var(--line);
+    background: var(--card); color: var(--ink); font-weight:700; font-size:14px; margin-bottom:10px;
+  }
+  .util-btn.danger{ color: var(--coral-dark); border-color: var(--coral); }
+
+  /* ---------- タブバー ---------- */
+  nav.tabbar{
+    position: fixed; left:0; right:0; bottom:0; z-index:20;
+    padding-bottom: var(--safe-bottom);
+    background: var(--paper); border-top: 1px solid var(--line);
+  }
+  .tabbar-inner{ max-width:560px; margin:0 auto; display:flex; }
+  .tab-btn{
+    flex:1; background:none; border:none; padding: 9px 0 8px;
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    color: var(--ink-soft); font-size: 10px; font-weight:700;
+  }
+  .tab-btn svg{ width:22px; height:22px; stroke: var(--ink-soft); fill:none; stroke-width:1.7; }
+  .tab-btn.active{ color: var(--marker-dark); }
+  .tab-btn.active svg{ stroke: var(--marker-dark); }
+
+  /* ---------- モーダル ---------- */
+  .modal-bg{
+    position:fixed; inset:0; background: rgba(46,43,36,.42); z-index:30;
+    display:none; align-items:flex-end; justify-content:center;
+  }
+  .modal-bg.open{ display:flex; }
+  .modal{
+    background: var(--paper); width:100%; max-width:560px; border-radius: 20px 20px 0 0;
+    padding: 20px 20px calc(24px + var(--safe-bottom));
+    animation: slideup .2s ease;
+  }
+  @keyframes slideup{ from{ transform:translateY(30px); opacity:.5;} to{ transform:none; opacity:1;} }
+  .modal h3{ margin:0 0 14px; font-size:16px; font-weight:800; }
+  .modal input[type=text]{
+    width:100%; padding:12px 12px; border-radius:12px; border:1px solid var(--line);
+    background: var(--card); font-size:15px; margin-bottom:14px; color: var(--ink);
+  }
+  .modal-actions{ display:flex; gap:10px; }
+  .modal-actions button{
+    flex:1; padding:12px; border-radius:12px; border:none; font-weight:800; font-size:14px;
+  }
+  .modal-actions .cancel{ background: var(--line); color: var(--ink); }
+  .modal-actions .confirm{ background: var(--marker); color:#fff; }
+  .swatches{ display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
+  .swatch{ width:26px; height:26px; border-radius:50%; border:2px solid transparent; }
+  .swatch.selected{ border-color: var(--ink); }
+
+  input[type=file]{ display:none; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <header class="top">
+    <h1>ラクガキ時間</h1>
+    <span class="date mono" id="headerDate"></span>
+  </header>
+
+  <!-- ============ タイマー ============ -->
+  <section class="screen active" id="screen-timer">
+    <div class="selector-row">
+      <select id="workSelect"></select>
+    </div>
+    <div class="chips" id="categoryChips"></div>
+
+    <div class="dial-wrap">
+      <div class="dial" id="dial">
+        <svg viewBox="0 0 120 120">
+          <circle class="dial-track" cx="60" cy="60" r="54"></circle>
+          <circle class="dial-prog" id="dialProg" cx="60" cy="60" r="54"
+            stroke-dasharray="339.3" stroke-dashoffset="339.3"></circle>
+        </svg>
+        <div class="dial-center">
+          <div class="dial-time mono" id="timeDisplay">00:00:00</div>
+          <div class="dial-label" id="dialLabel">作品と工程を選んで開始</div>
+        </div>
+      </div>
+    </div>
+
+    <button class="go-btn" id="goBtn">記録開始</button>
+
+    <div class="section-title">今日の記録</div>
+    <div id="todayList"></div>
+  </section>
+
+  <!-- ============ 日別記録 ============ -->
+  <section class="screen" id="screen-daily">
+    <div id="dailyList"></div>
+  </section>
+
+  <!-- ============ 作品別記録 ============ -->
+  <section class="screen" id="screen-works">
+    <div id="worksList"></div>
+  </section>
+
+  <!-- ============ 管理 ============ -->
+  <section class="screen" id="screen-manage">
+    <div class="section-title">作品</div>
+    <div class="manage-list" id="manageWorks"></div>
+    <button class="add-btn" id="addWorkBtn">＋ 作品を追加</button>
+
+    <div class="section-title">工程（タスク）</div>
+    <div class="manage-list" id="manageCategories"></div>
+    <button class="add-btn" id="addCategoryBtn">＋ 工程を追加</button>
+
+    <div class="section-title">データ</div>
+    <button class="util-btn" id="exportBtn">バックアップを書き出す (JSON)</button>
+    <button class="util-btn" id="importBtn">バックアップを読み込む</button>
+    <input type="file" id="importFile" accept="application/json">
+    <button class="util-btn danger" id="resetBtn">すべてのデータを削除</button>
+  </section>
+</div>
+
+<nav class="tabbar">
+  <div class="tabbar-inner">
+    <button class="tab-btn active" data-tab="timer">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2"/><path d="M9 2h6M12 2v2"/></svg>
+      タイマー
+    </button>
+    <button class="tab-btn" data-tab="daily">
+      <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+      日別
+    </button>
+    <button class="tab-btn" data-tab="works">
+      <svg viewBox="0 0 24 24"><path d="M4 4l16 4-4 16L4 4z"/><circle cx="9" cy="9" r="1.4"/></svg>
+      作品別
+    </button>
+    <button class="tab-btn" data-tab="manage">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 00-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 00-2-1.2L14 3h-4l-.6 2.6a7 7 0 00-2 1.2l-2.3-.9-2 3.4 2 1.5a7 7 0 000 2.4l-2 1.5 2 3.4 2.3-.9a7 7 0 002 1.2L10 21h4l.6-2.6a7 7 0 002-1.2l2.3.9 2-3.4-2-1.5c.07-.4.1-.8.1-1.2z"/></svg>
+      管理
+    </button>
+  </div>
+</nav>
+
+<!-- ============ モーダル: 汎用入力 ============ -->
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <h3 id="modalTitle">入力</h3>
+    <input type="text" id="modalInput" placeholder="">
+    <div class="swatches" id="modalSwatches" style="display:none;"></div>
+    <div class="modal-actions">
+      <button class="cancel" id="modalCancel">キャンセル</button>
+      <button class="confirm" id="modalConfirm">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var STORAGE_KEY = "illustTrackerData_v1";
+  var PALETTE = ["#157A73","#D65F45","#B8863A","#4A6FA5","#8E5A9E","#5A8F4E","#C24E6E","#3D7A9E"];
+
+  var DEFAULT_DATA = {
+    works: [
+      { id: uid(), title: "無題の作品", color: PALETTE[0], createdAt: Date.now() }
+    ],
+    categories: ["ラフ","下書き","線画","彩色","仕上げ","その他"],
+    sessions: [],
+    running: null // { workId, category, startTime }
+  };
+
+  function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+
+  var data = loadData();
+
+  function loadData(){
+    try{
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return JSON.parse(JSON.stringify(DEFAULT_DATA));
+      var parsed = JSON.parse(raw);
+      if(!parsed.works || !parsed.categories) throw new Error("bad shape");
+      if(!parsed.sessions) parsed.sessions = [];
+      if(parsed.running === undefined) parsed.running = null;
+      return parsed;
+    }catch(e){
+      return JSON.parse(JSON.stringify(DEFAULT_DATA));
+    }
+  }
+  function saveData(){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }
+
+  function fmtHMS(totalSec){
+    totalSec = Math.max(0, Math.floor(totalSec));
+    var h = Math.floor(totalSec/3600);
+    var m = Math.floor((totalSec%3600)/60);
+    var s = totalSec%60;
+    function p(n){ return (n<10?"0":"")+n; }
+    return p(h)+":"+p(m)+":"+p(s);
+  }
+  function fmtDurationShort(totalSec){
+    totalSec = Math.max(0, Math.floor(totalSec));
+    var h = Math.floor(totalSec/3600);
+    var m = Math.floor((totalSec%3600)/60);
+    if(h>0) return h+"時間"+m+"分";
+    if(m>0) return m+"分";
+    return Math.floor(totalSec)+"秒";
+  }
+  function dateKey(ts){
+    var d = new Date(ts);
+    return d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate();
+  }
+  function fmtDateLabel(ts){
+    var d = new Date(ts);
+    var today = new Date();
+    var yest = new Date(); yest.setDate(today.getDate()-1);
+    if(dateKey(ts)===dateKey(today.getTime())) return "今日 "+(d.getMonth()+1)+"/"+d.getDate();
+    if(dateKey(ts)===dateKey(yest.getTime())) return "昨日 "+(d.getMonth()+1)+"/"+d.getDate();
+    var wd = ["日","月","火","水","木","金","土"][d.getDay()];
+    return (d.getMonth()+1)+"/"+d.getDate()+"("+wd+")";
+  }
+  function fmtClock(ts){
+    var d = new Date(ts);
+    function p(n){ return (n<10?"0":"")+n; }
+    return p(d.getHours())+":"+p(d.getMinutes());
+  }
+
+  function getWork(id){ return data.works.find(function(w){ return w.id===id; }); }
+
+  // ---------------- ヘッダー日付 ----------------
+  function renderHeaderDate(){
+    var d = new Date();
+    var wd = ["日","月","火","水","木","金","土"][d.getDay()];
+    document.getElementById("headerDate").textContent =
+      d.getFullYear()+"/"+(d.getMonth()+1)+"/"+d.getDate()+" ("+wd+")";
+  }
+
+  // ================= タイマー画面 =================
+  var currentCategory = data.categories[0];
+  var timerInterval = null;
+
+  function renderWorkSelect(){
+    var sel = document.getElementById("workSelect");
+    sel.innerHTML = "";
+    data.works.forEach(function(w){
+      var opt = document.createElement("option");
+      opt.value = w.id; opt.textContent = w.title;
+      sel.appendChild(opt);
+    });
+    if(data.running){ sel.value = data.running.workId; sel.disabled = true; }
+    else{ sel.disabled = false; }
+  }
+
+  function renderCategoryChips(){
+    var wrap = document.getElementById("categoryChips");
+    wrap.innerHTML = "";
+    data.categories.forEach(function(c){
+      var chip = document.createElement("button");
+      chip.className = "chip" + (c===currentCategory ? " selected" : "");
+      chip.textContent = c;
+      chip.disabled = !!data.running && c!==currentCategory;
+      chip.addEventListener("click", function(){
+        if(data.running) return;
+        currentCategory = c;
+        renderCategoryChips();
+        updateDialLabel();
+      });
+      wrap.appendChild(chip);
+    });
+  }
+
+  function updateDialLabel(){
+    var sel = document.getElementById("workSelect");
+    var workTitle = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : "";
+    document.getElementById("dialLabel").textContent =
+      data.running ? (getWork(data.running.workId)||{}).title + " ・ " + data.running.category
+                   : (workTitle ? workTitle+" ・ "+currentCategory : "作品と工程を選んで開始");
+  }
+
+  var DIAL_CIRC = 339.3;
+  function tickTimer(){
+    var elapsed = data.running ? (Date.now() - data.running.startTime)/1000 : 0;
+    document.getElementById("timeDisplay").textContent = fmtHMS(elapsed);
+    var frac = (elapsed % 60) / 60;
+    document.getElementById("dialProg").style.strokeDashoffset = (DIAL_CIRC * (1-frac)).toFixed(1);
+  }
+
+  function renderGoBtn(){
+    var btn = document.getElementById("goBtn");
+    var dial = document.getElementById("dial");
+    if(data.running){
+      btn.textContent = "停止して記録";
+      btn.classList.add("stop");
+      dial.classList.add("running");
+    }else{
+      btn.textContent = "記録開始";
+      btn.classList.remove("stop");
+      dial.classList.remove("running");
+      document.getElementById("timeDisplay").textContent = "00:00:00";
+      document.getElementById("dialProg").style.strokeDashoffset = DIAL_CIRC;
+    }
+  }
+
+  document.getElementById("goBtn").addEventListener("click", function(){
+    if(data.running){
+      // 停止 → セッション保存
+      var dur = (Date.now() - data.running.startTime)/1000;
+      if(dur >= 1){
+        data.sessions.push({
+          id: uid(),
+          workId: data.running.workId,
+          category: data.running.category,
+          start: data.running.startTime,
+          end: Date.now(),
+          duration: dur
+        });
+      }
+      data.running = null;
+      clearInterval(timerInterval);
+      saveData();
+      renderAll();
+    }else{
+      var workId = document.getElementById("workSelect").value;
+      if(!workId){ return; }
+      data.running = { workId: workId, category: currentCategory, startTime: Date.now() };
+      saveData();
+      renderWorkSelect();
+      renderCategoryChips();
+      updateDialLabel();
+      renderGoBtn();
+      timerInterval = setInterval(tickTimer, 1000);
+      tickTimer();
+    }
+  });
+
+  document.getElementById("workSelect").addEventListener("change", updateDialLabel);
+
+  function renderTodayList(){
+    var wrap = document.getElementById("todayList");
+    wrap.innerHTML = "";
+    var todayKey = dateKey(Date.now());
+    var list = data.sessions.filter(function(s){ return dateKey(s.start)===todayKey; })
+                             .sort(function(a,b){ return b.start-a.start; });
+    if(list.length===0){
+      wrap.innerHTML = '<div class="empty">今日はまだ記録がありません</div>';
+      return;
+    }
+    list.forEach(function(s){
+      wrap.appendChild(buildSessionRow(s));
+    });
+  }
+
+  function buildSessionRow(s){
+    var w = getWork(s.workId) || { title:"（削除済み）", color:"#999" };
+    var row = document.createElement("div");
+    row.className = "sess-item";
+    row.innerHTML =
+      '<span class="dot" style="background:'+w.color+'"></span>'+
+      '<div class="sess-main">'+
+        '<div class="sess-title">'+escapeHtml(w.title)+' <span style="color:var(--ink-soft);font-weight:500;">'+escapeHtml(s.category)+'</span></div>'+
+        '<div class="sess-sub">'+fmtClock(s.start)+' – '+fmtClock(s.end)+'</div>'+
+      '</div>'+
+      '<div class="sess-dur">'+fmtDurationShort(s.duration)+'</div>'+
+      '<div class="sess-del" data-id="'+s.id+'">✕</div>';
+    row.querySelector(".sess-del").addEventListener("click", function(){
+      if(confirm("この記録を削除しますか？")){
+        data.sessions = data.sessions.filter(function(x){ return x.id!==s.id; });
+        saveData(); renderAll();
+      }
+    });
+    return row;
+  }
+
+  function escapeHtml(str){
+    return String(str).replace(/[&<>"']/g, function(c){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];
+    });
+  }
+
+  // ================= 日別記録画面 =================
+  function renderDaily(){
+    var wrap = document.getElementById("dailyList");
+    wrap.innerHTML = "";
+    if(data.sessions.length===0){
+      wrap.innerHTML = '<div class="empty">まだ記録がありません。タイマーを使ってみましょう。</div>';
+      return;
+    }
+    var groups = {};
+    data.sessions.forEach(function(s){
+      var k = dateKey(s.start);
+      if(!groups[k]) groups[k] = [];
+      groups[k].push(s);
+    });
+    var keys = Object.keys(groups).sort(function(a,b){ return groups[b][0].start - groups[a][0].start; });
+    keys.forEach(function(k){
+      var list = groups[k].sort(function(a,b){ return b.start-a.start; });
+      var total = list.reduce(function(acc,s){ return acc+s.duration; }, 0);
+      var card = document.createElement("div");
+      card.className = "day-card";
+      card.innerHTML =
+        '<div class="day-head"><span class="day-name">'+fmtDateLabel(list[0].start)+'</span>'+
+        '<span class="day-total">'+fmtDurationShort(total)+'</span></div>';
+      list.forEach(function(s){ card.appendChild(buildSessionRow(s)); });
+      wrap.appendChild(card);
+    });
+  }
+
+  // ================= 作品別記録画面 =================
+  function renderWorks(){
+    var wrap = document.getElementById("worksList");
+    wrap.innerHTML = "";
+    if(data.works.length===0){
+      wrap.innerHTML = '<div class="empty">作品がありません。「管理」タブから追加してください。</div>';
+      return;
+    }
+    data.works.forEach(function(w){
+      var sessions = data.sessions.filter(function(s){ return s.workId===w.id; })
+                                   .sort(function(a,b){ return b.start-a.start; });
+      var total = sessions.reduce(function(acc,s){ return acc+s.duration; }, 0);
+
+      var byCat = {};
+      sessions.forEach(function(s){
+        byCat[s.category] = (byCat[s.category]||0) + s.duration;
+      });
+      var catKeys = Object.keys(byCat).sort(function(a,b){ return byCat[b]-byCat[a]; });
+
+      var card = document.createElement("div");
+      card.className = "work-card";
+      var barHtml = "";
+      var legendHtml = "";
+      var catColors = ["#157A73","#D65F45","#B8863A","#4A6FA5","#8E5A9E","#5A8F4E"];
+      catKeys.forEach(function(c,i){
+        var pct = total>0 ? (byCat[c]/total*100) : 0;
+        var col = catColors[i % catColors.length];
+        barHtml += '<span style="width:'+pct+'%;background:'+col+'"></span>';
+        legendHtml += '<span><i style="background:'+col+'"></i>'+escapeHtml(c)+' '+fmtDurationShort(byCat[c])+'</span>';
+      });
+
+      card.innerHTML =
+        '<div class="work-head">'+
+          '<div class="work-title-wrap"><span class="dot" style="background:'+w.color+'"></span>'+
+          '<span class="work-title">'+escapeHtml(w.title)+'</span></div>'+
+          '<span class="work-total">'+fmtDurationShort(total)+'</span>'+
+        '</div>'+
+        (total>0 ? '<div class="bar">'+barHtml+'</div><div class="legend">'+legendHtml+'</div>' : '<div class="empty" style="padding:8px 0;">まだ記録がありません</div>')+
+        '<div class="work-detail" id="detail-'+w.id+'"></div>';
+
+      var head = card.querySelector(".work-head");
+      var detail = card.querySelector(".work-detail");
+      head.addEventListener("click", function(){
+        var open = detail.classList.toggle("open");
+        if(open){
+          detail.innerHTML = "";
+          if(sessions.length===0){ detail.innerHTML = '<div class="empty">記録なし</div>'; }
+          sessions.forEach(function(s){ detail.appendChild(buildSessionRow(s)); });
+        }
+      });
+
+      wrap.appendChild(card);
+    });
+  }
+
+  // ================= 管理画面 =================
+  function renderManage(){
+    var wWrap = document.getElementById("manageWorks");
+    wWrap.innerHTML = "";
+    data.works.forEach(function(w){
+      var row = document.createElement("div");
+      row.className = "manage-row";
+      row.innerHTML =
+        '<span class="name"><span class="dot" style="background:'+w.color+'"></span>'+escapeHtml(w.title)+'</span>'+
+        '<span class="actions"><span data-act="edit">編集</span><span data-act="del" class="del">削除</span></span>';
+      row.querySelector('[data-act=edit]').addEventListener("click", function(){ openWorkModal(w); });
+      row.querySelector('[data-act=del]').addEventListener("click", function(){
+        if(data.running && data.running.workId===w.id){ alert("計測中の作品は削除できません。"); return; }
+        if(confirm('「'+w.title+'」を削除しますか？関連する記録は残ります。')){
+          data.works = data.works.filter(function(x){ return x.id!==w.id; });
+          saveData(); renderAll();
+        }
+      });
+      wWrap.appendChild(row);
+    });
+
+    var cWrap = document.getElementById("manageCategories");
+    cWrap.innerHTML = "";
+    data.categories.forEach(function(c){
+      var row = document.createElement("div");
+      row.className = "manage-row";
+      row.innerHTML = '<span class="name">'+escapeHtml(c)+'</span>'+
+        '<span class="actions"><span data-act="del" class="del">削除</span></span>';
+      row.querySelector('[data-act=del]').addEventListener("click", function(){
+        if(data.categories.length<=1){ alert("工程は最低ひとつ必要です。"); return; }
+        if(confirm('工程「'+c+'」を削除しますか？')){
+          data.categories = data.categories.filter(function(x){ return x!==c; });
+          if(currentCategory===c) currentCategory = data.categories[0];
+          saveData(); renderAll();
+        }
+      });
+      cWrap.appendChild(row);
+    });
+  }
+
+  // ---------------- モーダル (汎用) ----------------
+  var modalBg = document.getElementById("modalBg");
+  var modalInput = document.getElementById("modalInput");
+  var modalTitle = document.getElementById("modalTitle");
+  var modalSwatches = document.getElementById("modalSwatches");
+  var modalConfirm = document.getElementById("modalConfirm");
+  var modalCancel = document.getElementById("modalCancel");
+  var modalOnConfirm = null;
+  var selectedColor = PALETTE[0];
+
+  function openModal(opts){
+    modalTitle.textContent = opts.title;
+    modalInput.placeholder = opts.placeholder || "";
+    modalInput.value = opts.value || "";
+    if(opts.showColor){
+      modalSwatches.style.display = "flex";
+      selectedColor = opts.color || PALETTE[0];
+      renderSwatches();
+    }else{
+      modalSwatches.style.display = "none";
+    }
+    modalOnConfirm = opts.onConfirm;
+    modalBg.classList.add("open");
+    setTimeout(function(){ modalInput.focus(); }, 50);
+  }
+  function closeModal(){ modalBg.classList.remove("open"); modalOnConfirm = null; }
+  function renderSwatches(){
+    modalSwatches.innerHTML = "";
+    PALETTE.forEach(function(col){
+      var sw = document.createElement("div");
+      sw.className = "swatch" + (col===selectedColor ? " selected":"");
+      sw.style.background = col;
+      sw.addEventListener("click", function(){ selectedColor = col; renderSwatches(); });
+      modalSwatches.appendChild(sw);
+    });
+  }
+  modalCancel.addEventListener("click", closeModal);
+  modalBg.addEventListener("click", function(e){ if(e.target===modalBg) closeModal(); });
+  modalConfirm.addEventListener("click", function(){
+    var val = modalInput.value.trim();
+    if(!val){ modalInput.focus(); return; }
+    if(modalOnConfirm) modalOnConfirm(val, selectedColor);
+    closeModal();
+  });
+
+  function openWorkModal(work){
+    openModal({
+      title: work ? "作品名を編集" : "新しい作品",
+      placeholder: "例）オリジナルキャラ設定画",
+      value: work ? work.title : "",
+      showColor: true,
+      color: work ? work.color : PALETTE[data.works.length % PALETTE.length],
+      onConfirm: function(val, color){
+        if(work){ work.title = val; work.color = color; }
+        else{ data.works.push({ id: uid(), title: val, color: color, createdAt: Date.now() }); }
+        saveData(); renderAll();
+      }
+    });
+  }
+
+  document.getElementById("addWorkBtn").addEventListener("click", function(){ openWorkModal(null); });
+  document.getElementById("addCategoryBtn").addEventListener("click", function(){
+    openModal({
+      title: "新しい工程",
+      placeholder: "例）背景",
+      showColor:false,
+      onConfirm: function(val){
+        if(data.categories.indexOf(val)===-1){ data.categories.push(val); }
+        saveData(); renderAll();
+      }
+    });
+  });
+
+  // ---------------- バックアップ ----------------
+  document.getElementById("exportBtn").addEventListener("click", function(){
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type:"application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    var d = new Date();
+    a.href = url;
+    a.download = "illust-tracker-backup-"+d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate()+".json";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+  });
+  document.getElementById("importBtn").addEventListener("click", function(){
+    document.getElementById("importFile").click();
+  });
+  document.getElementById("importFile").addEventListener("change", function(e){
+    var file = e.target.files[0];
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      try{
+        var parsed = JSON.parse(reader.result);
+        if(!parsed.works || !parsed.categories || !parsed.sessions) throw new Error("形式が違います");
+        if(confirm("現在のデータを置き換えます。よろしいですか？")){
+          data = parsed;
+          if(data.running===undefined) data.running = null;
+          saveData(); renderAll();
+        }
+      }catch(err){
+        alert("読み込みに失敗しました: "+err.message);
+      }
+      e.target.value = "";
+    };
+    reader.readAsText(file);
+  });
+  document.getElementById("resetBtn").addEventListener("click", function(){
+    if(confirm("本当にすべてのデータを削除しますか？この操作は取り消せません。")){
+      data = JSON.parse(JSON.stringify(DEFAULT_DATA));
+      saveData(); renderAll();
+    }
+  });
+
+  // ---------------- タブ切り替え ----------------
+  document.querySelectorAll(".tab-btn").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      document.querySelectorAll(".tab-btn").forEach(function(b){ b.classList.remove("active"); });
+      document.querySelectorAll(".screen").forEach(function(s){ s.classList.remove("active"); });
+      btn.classList.add("active");
+      document.getElementById("screen-"+btn.dataset.tab).classList.add("active");
+      if(btn.dataset.tab==="daily") renderDaily();
+      if(btn.dataset.tab==="works") renderWorks();
+      if(btn.dataset.tab==="manage") renderManage();
+    });
+  });
+
+  // ---------------- 初期アイコン生成 (ホーム画面用) ----------------
+  function generateIcon(){
+    var size = 180;
+    var canvas = document.createElement("canvas");
+    canvas.width = size; canvas.height = size;
+    var ctx = canvas.getContext("2d");
+    // 背景
+    ctx.fillStyle = "#EDE7D6";
+    roundRect(ctx, 0, 0, size, size, 36); ctx.fill();
+    // ペン先っぽい三角
+    ctx.fillStyle = "#157A73";
+    ctx.beginPath();
+    ctx.moveTo(size*0.30, size*0.18);
+    ctx.lineTo(size*0.82, size*0.70);
+    ctx.lineTo(size*0.68, size*0.84);
+    ctx.lineTo(size*0.16, size*0.32);
+    ctx.closePath(); ctx.fill();
+    // ペン先の点
+    ctx.fillStyle = "#D65F45";
+    ctx.beginPath();
+    ctx.arc(size*0.20, size*0.26, size*0.06, 0, Math.PI*2);
+    ctx.fill();
+    document.getElementById("apple-touch-icon").href = canvas.toDataURL("image/png");
+    document.getElementById("favicon-link").href = canvas.toDataURL("image/png");
+  }
+  function roundRect(ctx,x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+  }
+
+  // ---------------- 再描画まとめ ----------------
+  function renderAll(){
+    renderHeaderDate();
+    renderWorkSelect();
+    renderCategoryChips();
+    updateDialLabel();
+    renderGoBtn();
+    renderTodayList();
+    if(document.getElementById("screen-daily").classList.contains("active")) renderDaily();
+    if(document.getElementById("screen-works").classList.contains("active")) renderWorks();
+    if(document.getElementById("screen-manage").classList.contains("active")) renderManage();
+  }
+
+  // ---------------- 起動 ----------------
+  generateIcon();
+  renderAll();
+  if(data.running){
+    timerInterval = setInterval(tickTimer, 1000);
+    tickTimer();
+  }
+
+  // タブを閉じて再度開いたときのため、可視化のたびに再描画
+  document.addEventListener("visibilitychange", function(){
+    if(!document.hidden) renderAll();
+  });
+
+})();
+</script>
+</body>
+</html>
