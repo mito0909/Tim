@@ -79,26 +79,26 @@
     border-radius: 12px; padding: 11px 12px; font-size: 14px; color: var(--ink);
     font-weight:600;
   }
-  .chips{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom: 22px; }
+  .chips{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom: 26px; }
   .chip{
-    padding: 7px 14px; border-radius: 999px; border:1px solid var(--line);
-    background: var(--card); font-size: 13px; font-weight:600; color: var(--ink-soft);
+    padding: 13px 22px; border-radius: 999px; border:1.5px solid var(--line);
+    background: var(--card); font-size: 15px; font-weight:700; color: var(--ink-soft);
   }
   .chip.selected{ background: var(--marker); border-color: var(--marker); color:#fff; }
 
-  .dial-wrap{ display:flex; justify-content:center; margin: 10px 0 22px; }
-  .dial{ position:relative; width: 250px; height:250px; }
+  .dial-wrap{ display:flex; justify-content:center; margin: 22px 0 34px; }
+  .dial{ position:relative; width: min(340px, 82vw); height:min(340px, 82vw); }
   .dial svg{ width:100%; height:100%; transform: rotate(-90deg); }
-  .dial-track{ fill:none; stroke: var(--line); stroke-width: 3; }
-  .dial-prog{ fill:none; stroke: var(--marker); stroke-width: 3; stroke-linecap: round;
+  .dial-track{ fill:none; stroke: var(--line); stroke-width: 2.4; }
+  .dial-prog{ fill:none; stroke: var(--marker); stroke-width: 2.4; stroke-linecap: round;
     transition: stroke-dashoffset .3s linear; }
   .dial.running .dial-prog{ stroke: var(--coral); }
   .dial-center{
     position:absolute; inset:0; display:flex; flex-direction:column;
     align-items:center; justify-content:center; text-align:center;
   }
-  .dial-time{ font-size: 40px; font-weight: 700; letter-spacing: .01em; }
-  .dial-label{ font-size: 12px; color: var(--ink-soft); margin-top:4px; max-width:170px; }
+  .dial-time{ font-size: 54px; font-weight: 700; letter-spacing: .01em; }
+  .dial-label{ font-size: 14px; color: var(--ink-soft); margin-top:8px; max-width:220px; }
 
   .go-btn{
     display:block; width: 100%; max-width: 320px; margin: 0 auto;
@@ -218,6 +218,20 @@
   .swatch.selected{ border-color: var(--ink); }
 
   input[type=file]{ display:none; }
+
+  .field-label{ font-size:12px; font-weight:700; color: var(--ink-soft); margin: 0 0 6px; }
+  .modal select, .modal input[type=datetime-local]{
+    width:100%; padding:11px 12px; border-radius:12px; border:1px solid var(--line);
+    background: var(--card); font-size:15px; margin-bottom:14px; color: var(--ink);
+    font-family: inherit;
+  }
+  .field-row{ display:flex; gap:10px; }
+  .field-row > div{ flex:1; }
+  .modal-delete{
+    width:100%; padding:11px; border-radius:12px; border:1px solid var(--coral);
+    background:transparent; color: var(--coral-dark); font-weight:800; font-size:13px; margin-bottom:12px;
+  }
+  .sess-item{ cursor:pointer; }
 </style>
 </head>
 <body>
@@ -250,9 +264,6 @@
     </div>
 
     <button class="go-btn" id="goBtn">記録開始</button>
-
-    <div class="section-title">今日の記録</div>
-    <div id="todayList"></div>
   </section>
 
   <!-- ============ 日別記録 ============ -->
@@ -313,6 +324,36 @@
     <div class="modal-actions">
       <button class="cancel" id="modalCancel">キャンセル</button>
       <button class="confirm" id="modalConfirm">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ モーダル: 記録の編集 ============ -->
+<div class="modal-bg" id="sessModalBg">
+  <div class="modal">
+    <h3>記録を編集</h3>
+
+    <div class="field-label">作品</div>
+    <select id="sessEditWork"></select>
+
+    <div class="field-label">工程</div>
+    <select id="sessEditCategory"></select>
+
+    <div class="field-row">
+      <div>
+        <div class="field-label">開始</div>
+        <input type="datetime-local" id="sessEditStart">
+      </div>
+      <div>
+        <div class="field-label">終了</div>
+        <input type="datetime-local" id="sessEditEnd">
+      </div>
+    </div>
+
+    <button class="modal-delete" id="sessEditDelete">この記録を削除</button>
+    <div class="modal-actions">
+      <button class="cancel" id="sessEditCancel">キャンセル</button>
+      <button class="confirm" id="sessEditConfirm">保存</button>
     </div>
   </div>
 </div>
@@ -400,7 +441,8 @@
   }
 
   // ================= タイマー画面 =================
-  var currentCategory = data.categories[0];
+  var currentCategory = (data.lastCategory && data.categories.indexOf(data.lastCategory)!==-1)
+    ? data.lastCategory : data.categories[0];
   var timerInterval = null;
 
   function renderWorkSelect(){
@@ -411,8 +453,12 @@
       opt.value = w.id; opt.textContent = w.title;
       sel.appendChild(opt);
     });
-    if(data.running){ sel.value = data.running.workId; sel.disabled = true; }
-    else{ sel.disabled = false; }
+    if(data.running){
+      sel.value = data.running.workId; sel.disabled = true;
+    }else{
+      sel.disabled = false;
+      if(data.lastWorkId && getWork(data.lastWorkId)){ sel.value = data.lastWorkId; }
+    }
   }
 
   function renderCategoryChips(){
@@ -426,6 +472,8 @@
       chip.addEventListener("click", function(){
         if(data.running) return;
         currentCategory = c;
+        data.lastCategory = c;
+        saveData();
         renderCategoryChips();
         updateDialLabel();
       });
@@ -487,6 +535,8 @@
       var workId = document.getElementById("workSelect").value;
       if(!workId){ return; }
       data.running = { workId: workId, category: currentCategory, startTime: Date.now() };
+      data.lastWorkId = workId;
+      data.lastCategory = currentCategory;
       saveData();
       renderWorkSelect();
       renderCategoryChips();
@@ -497,22 +547,11 @@
     }
   });
 
-  document.getElementById("workSelect").addEventListener("change", updateDialLabel);
-
-  function renderTodayList(){
-    var wrap = document.getElementById("todayList");
-    wrap.innerHTML = "";
-    var todayKey = dateKey(Date.now());
-    var list = data.sessions.filter(function(s){ return dateKey(s.start)===todayKey; })
-                             .sort(function(a,b){ return b.start-a.start; });
-    if(list.length===0){
-      wrap.innerHTML = '<div class="empty">今日はまだ記録がありません</div>';
-      return;
-    }
-    list.forEach(function(s){
-      wrap.appendChild(buildSessionRow(s));
-    });
-  }
+  document.getElementById("workSelect").addEventListener("change", function(){
+    data.lastWorkId = document.getElementById("workSelect").value;
+    saveData();
+    updateDialLabel();
+  });
 
   function buildSessionRow(s){
     var w = getWork(s.workId) || { title:"（削除済み）", color:"#999" };
@@ -526,14 +565,91 @@
       '</div>'+
       '<div class="sess-dur">'+fmtDurationShort(s.duration)+'</div>'+
       '<div class="sess-del" data-id="'+s.id+'">✕</div>';
-    row.querySelector(".sess-del").addEventListener("click", function(){
+    row.querySelector(".sess-del").addEventListener("click", function(e){
+      e.stopPropagation();
       if(confirm("この記録を削除しますか？")){
         data.sessions = data.sessions.filter(function(x){ return x.id!==s.id; });
         saveData(); renderAll();
       }
     });
+    row.addEventListener("click", function(){ openSessionEditModal(s.id); });
     return row;
   }
+
+  // ---------------- 記録編集モーダル ----------------
+  function toLocalInputValue(ts){
+    var d = new Date(ts);
+    function p(n){ return (n<10?"0":"")+n; }
+    return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+"T"+p(d.getHours())+":"+p(d.getMinutes());
+  }
+  function fromLocalInputValue(str){
+    // datetime-local の値はローカルタイムとして解釈される
+    var t = new Date(str).getTime();
+    return isNaN(t) ? null : t;
+  }
+
+  var sessModalBg = document.getElementById("sessModalBg");
+  var sessEditWork = document.getElementById("sessEditWork");
+  var sessEditCategory = document.getElementById("sessEditCategory");
+  var sessEditStart = document.getElementById("sessEditStart");
+  var sessEditEnd = document.getElementById("sessEditEnd");
+  var editingSessionId = null;
+
+  function openSessionEditModal(sessionId){
+    var s = data.sessions.find(function(x){ return x.id===sessionId; });
+    if(!s) return;
+    editingSessionId = sessionId;
+
+    sessEditWork.innerHTML = "";
+    data.works.forEach(function(w){
+      var opt = document.createElement("option");
+      opt.value = w.id; opt.textContent = w.title;
+      if(w.id===s.workId) opt.selected = true;
+      sessEditWork.appendChild(opt);
+    });
+    sessEditCategory.innerHTML = "";
+    data.categories.forEach(function(c){
+      var opt = document.createElement("option");
+      opt.value = c; opt.textContent = c;
+      if(c===s.category) opt.selected = true;
+      sessEditCategory.appendChild(opt);
+    });
+    sessEditStart.value = toLocalInputValue(s.start);
+    sessEditEnd.value = toLocalInputValue(s.end);
+
+    sessModalBg.classList.add("open");
+  }
+  function closeSessModal(){ sessModalBg.classList.remove("open"); editingSessionId = null; }
+
+  document.getElementById("sessEditCancel").addEventListener("click", closeSessModal);
+  sessModalBg.addEventListener("click", function(e){ if(e.target===sessModalBg) closeSessModal(); });
+
+  document.getElementById("sessEditConfirm").addEventListener("click", function(){
+    var s = data.sessions.find(function(x){ return x.id===editingSessionId; });
+    if(!s) return;
+    var newStart = fromLocalInputValue(sessEditStart.value);
+    var newEnd = fromLocalInputValue(sessEditEnd.value);
+    if(newStart===null || newEnd===null){ alert("日時が正しくありません。"); return; }
+    if(newEnd <= newStart){ alert("終了時刻は開始時刻より後にしてください。"); return; }
+    s.workId = sessEditWork.value;
+    s.category = sessEditCategory.value;
+    s.start = newStart;
+    s.end = newEnd;
+    s.duration = (newEnd - newStart) / 1000;
+    saveData();
+    closeSessModal();
+    renderAll();
+  });
+
+  document.getElementById("sessEditDelete").addEventListener("click", function(){
+    if(!editingSessionId) return;
+    if(confirm("この記録を削除しますか？")){
+      data.sessions = data.sessions.filter(function(x){ return x.id!==editingSessionId; });
+      saveData();
+      closeSessModal();
+      renderAll();
+    }
+  });
 
   function escapeHtml(str){
     return String(str).replace(/[&<>"']/g, function(c){
@@ -656,7 +772,7 @@
         if(data.categories.length<=1){ alert("工程は最低ひとつ必要です。"); return; }
         if(confirm('工程「'+c+'」を削除しますか？')){
           data.categories = data.categories.filter(function(x){ return x!==c; });
-          if(currentCategory===c) currentCategory = data.categories[0];
+          if(currentCategory===c){ currentCategory = data.categories[0]; data.lastCategory = currentCategory; }
           saveData(); renderAll();
         }
       });
@@ -833,7 +949,6 @@
     renderCategoryChips();
     updateDialLabel();
     renderGoBtn();
-    renderTodayList();
     if(document.getElementById("screen-daily").classList.contains("active")) renderDaily();
     if(document.getElementById("screen-works").classList.contains("active")) renderWorks();
     if(document.getElementById("screen-manage").classList.contains("active")) renderManage();
